@@ -7,6 +7,9 @@ import Control.Applicative
 import Data.Vector (Vector, (!))
 import qualified Data.Vector as V
 import Debug.Trace
+import Control.Monad.Trans.Reader
+import Control.Monad.IO.Class
+import Control.DeepSeq (($!!))
 
 data Input = Input { file :: FilePath }
              deriving (Show, Data, Typeable)
@@ -26,8 +29,13 @@ run ss
             n:k:_   -> let k' = read k
                            n' = read n
                            (vs, ws) = initK (tail ss)
-                           tbl      = initTable k' vs ws
-                       in  [tbl ! k' ! n']
+                       in  ans n' k' vs ws
+
+ans2:: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ans2 n k vs ws = 
+    let tbl = initTable k vs ws tbl
+    in  [tbl ! k ! n ]
+
 
 initK :: [String] -> (Vector Int, Vector Int)
 initK ss = let (vs, ws) = foldr (f . words) ([], []) ss
@@ -36,10 +44,10 @@ initK ss = let (vs, ws) = foldr (f . words) ([], []) ss
           f (v:[]) = id
           f (v:w:_) = \(vs', ws') -> ((read v):vs', (read w):ws')
           
-initTable :: Int -> Vector Int -> Vector Int -> Vector (Vector Int)
-initTable k vs ws = V.generate (k + 1) gen
-    where tbl = initTable k vs ws
-          n = V.length vs
+initTable :: Int -> Vector Int -> Vector Int -> Vector (Vector Int) -> 
+    Vector (Vector Int)
+initTable k vs ws tbl = V.generate (k + 1) gen
+    where n = V.length vs
           gen w
             | w == 0 = V.replicate (n + 1) 0
             | otherwise = V.generate (n + 1) (gen' w)
@@ -50,11 +58,71 @@ initTable k vs ws = V.generate (k + 1) gen
                       in  if w' < w_i then no_i
                           else max no_i ok_i
 
-{--
+ans:: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ans n k vs ws = 
+    let row = initRow k vs ws
+    in  [row ! k]
+
+initRow :: Int -> Vector Int -> Vector Int -> Vector Int
+initRow k vs ws = itbl 1 $!! V.replicate (k + 1) 0
+    where n = V.length vs
+          itbl i row
+             | i > n = row
+             | otherwise = itbl (i + 1) $!! V.generate (k + 1) gen
+             {--
+             | otherwise = 
+                 let row' = V.generate (k + 1) gen
+                 in  itbl (i + 1) $ trace (show row') row'
+             --}
+             where gen w = 
+                       let w_i = ws ! (i - 1)
+                           no_i = row ! w
+                           ok_i = row ! (w - w_i) + (vs ! (i - 1))
+                       in  
+                           if w < w_i then no_i
+                           else max no_i ok_i
+
+
+
+-------------------------------------
+-- Tests
+-------------------------------------
+
+
+initTable2 k vs ws tbl = V.generate (k + 1) gen
+    where n = V.length vs
+          gen w
+            | w == 0 = V.replicate (n + 1) 0
+            | otherwise = V.generate (n + 1) (gen' w)
+          gen' w' i = let v = tbl ! (w' - 1) ! i
+                      in  v + 1
+                          
+          
+initTable3 :: Int -> Int -> Vector (Vector Int) -> Vector (Vector Int)
+initTable3 k n tbl = V.generate (k + 1) gen
+    where gen w
+            | w == 0 = V.replicate (n + 1) 0
+            | otherwise = 
+                if (w `mod` 10 == 0) then
+                    V.generate (n + 1) (gen' (trace (show w) w))
+                else
+                    V.generate (n + 1) (gen' w)
+          gen' w' i = let v = tbl ! (w' - 1) ! i
+                          --v' = trace (show v) v
+                      in  v + 1
+
+
+test k n = let tbl = initTable3 k n tbl
+           in  tbl ! k ! n
+
+{-- 
+ Fomula:
  V(w, i) = if (w < w_i) then V(w, i - 1)
-           else max [V(w - w_i, i - 1),
+           else max [V(w - w_i, i - 1) + v_i,
                      V(w, i - 1)]
  --}
 
-vw = ["4 11", "8 4", "10 5", "15 8", "4 3"]
+k = 11
+n = 4
+vw = ["8 4", "10 5", "15 8", "4 3"]
 (vs, ws) = initK vw
