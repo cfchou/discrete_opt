@@ -16,7 +16,7 @@ def solveIt(inputData):
 
     # Runs the command: java Solver -file=tmp.data
 
-    process = Popen(['runghc', 'solver.hs', '--file=' + tmpFileName],
+    process = Popen(['./solver', '--file=' + tmpFileName],
                     stdout=PIPE)
     (stdout, stderr) = process.communicate()
 

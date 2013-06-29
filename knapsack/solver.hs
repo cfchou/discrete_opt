@@ -11,6 +11,7 @@ import Control.Monad.IO.Class
 import Control.DeepSeq (($!!))
 
 import qualified Data.Vector.Unboxed as UV
+import qualified Data.List as L
 {-- 
  0-1 Knapsack Formula:
  V(w, i) = if (w < w_i) then V(w, i - 1)
@@ -24,7 +25,15 @@ data Input = Input { file :: FilePath }
 input = Input { file = def &= help "Data file name" &= typ "FilePath" }
 
 main = run . lines <$> (cmdArgs input >>= readFile . file) >>= 
-       print
+       print2
+
+
+print2 :: [Int] -> IO () 
+print2 xs = 
+    putStrLn (show (head xs) ++ " 1") >>
+    (putStrLn $ L.concat $ L.intersperse " " [show x | x <- tail xs])
+
+
 
 run :: [String] -> [Int]
 run ss
@@ -36,7 +45,7 @@ run ss
             n:k:_   -> let k' = read k
                            n' = read n
                            (vs, ws) = initK (tail ss)
-                       in  ans4 n' k' vs ws
+                       in  ans5 n' k' vs ws
 
 initK :: [String] -> (Vector Int, Vector Int)
 initK ss = let (vs, ws) = foldr (f . words) ([], []) ss
@@ -140,6 +149,34 @@ initRow2 k vs ws = itbl 1 $!! UV.replicate (k + 1) 0
                        in  
                            if w < w_i then no_i
                            else max no_i ok_i
+
+
+-- solution 3: 
+ans5:: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ans5 n k vs ws = 
+    let rt = (initRow3 k vs ws) ! k
+        ps = reverse . snd $ foldl f (reverse $ snd rt, []) [1..n]
+    in  fst rt : ps
+    where f ([], es) i = ([], 0:es)
+          f (a@(x:xs), es) i = if (i == x) then (xs, 1:es)
+                             else (a, 0:es)
+
+
+initRow3 :: Int -> Vector Int -> Vector Int -> Vector (Int, [Int])
+initRow3 k vs ws = itbl 1 $!! (V.replicate (k + 1) (0, []))
+    where n = V.length vs
+          itbl i row
+             | i > n = row
+             | otherwise = itbl (i + 1) $!! V.generate (k + 1) gen
+             where gen w = 
+                       let w_i = ws ! (i - 1)
+                           w_r = w - w_i
+                           no_i = fst $ row ! w
+                           ok_i = (fst $ row ! w_r) + (vs ! (i - 1))
+                       in  
+                           if w < w_i then (no_i, snd (row ! w))
+                           else if no_i > ok_i then (no_i, snd (row ! w))
+                                else (ok_i, i : snd (row ! w_r))
 
 
 
