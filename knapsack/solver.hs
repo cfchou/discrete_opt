@@ -28,7 +28,7 @@ data Input = Input { file :: FilePath }
 input = Input { file = def &= help "Data file name" &= typ "FilePath" }
 
 main = run . lines <$> (cmdArgs input >>= readFile . file) >>= 
-       print
+       print2
 
 
 print2 :: [Int] -> IO () 
@@ -48,7 +48,7 @@ run ss
             n:k:_   -> let k' = read k
                            n' = read n
                            (vs, ws) = initK (tail ss)
-                       in  ans6 n' k' vs ws
+                       in  ans7 n' k' vs ws
 
 initK :: [String] -> (Vector Int, Vector Int)
 initK ss = let (vs, ws) = foldr (f . words) ([], []) ss
@@ -154,8 +154,18 @@ initRow2 k vs ws = itbl 1 $!! UV.replicate (k + 1) 0
                            else max no_i ok_i
 
 
+to_bimap n xs = reverse . snd $ foldl f (xs, []) [1..n]
+    where f ([], es) i = ([], 0:es)
+          f (a@(x:xs), es) i = if (i == x) then (xs, 1:es)
+                             else (a, 0:es)
+
 -- solution 3: 
 ans5 :: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ans5 n k vs ws = 
+    let rt = (initRow3 k vs ws) ! k
+    -- in  fst rt : (reverse (snd rt))
+    in  fst rt : (to_bimap n $ reverse (snd rt))
+{--
 ans5 n k vs ws = 
     let rt = (initRow3 k vs ws) ! k
         ps = reverse . snd $ foldl f (reverse $ snd rt, []) [1..n]
@@ -163,7 +173,7 @@ ans5 n k vs ws =
     where f ([], es) i = ([], 0:es)
           f (a@(x:xs), es) i = if (i == x) then (xs, 1:es)
                              else (a, 0:es)
-
+--}
 
 initRow3 :: Int -> Vector Int -> Vector Int -> Vector (Int, [Int])
 initRow3 k vs ws = itbl 1 $!! (V.replicate (k + 1) (0, []))
@@ -210,7 +220,8 @@ bnb :: Vector Int -> Vector Int -> Int -> Int -> Bool -> Bound -> Int
 bnb vs ws n i t b 
     | i > n = acc b
     | otherwise = --trace (show i ++ "  " ++ (show $ acc b) ++ ", " ++ (show $ curr b)) $
-        if (t && wi > cap b) then max (acc b) cb -- exceeds bound, pruned
+        -- if (t && wi > cap b) then max (acc b) cb -- exceeds bound, pruned
+        if (t && wi > cap b) then cb -- exceeds bound, pruned
         else 
             let acc' = (acc b) + (if t then vi else 0)
                 cap' = (cap b) - (if t then wi else 0)
@@ -240,6 +251,46 @@ estimate vs ws i acc cap rlst =
                     part = ceiling $ (fromIntegral (vx * c)) / 
                                       (fromIntegral wx)
 
+
+-- solution 5: Branch & Bound for the optimal and selected elements
+ans7 :: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ans7 n k vs ws = 
+    let (cb, cl) = run_bnb2 n k vs ws
+    -- in  cb : cl
+    in  cb : (to_bimap n cl) 
+
+data Bound2 = Bound2 { bound :: Bound
+                     , clst :: [Int]
+                     } deriving (Show)
+
+run_bnb2 :: Int -> Int -> Vector Int -> Vector Int -> (Int, [Int])
+run_bnb2 n k vs ws = 
+    let rlst = sorted vs ws
+        (lcb, lcl) = bnb2 vs ws n 1 True (Bound2 (Bound 0 k rlst 0) []) []
+        (rcb, rcl) = bnb2 vs ws n 1 False (Bound2 (Bound 0 k rlst lcb) lcl) []
+    in  (rcb, reverse rcl)
+
+bnb2 :: Vector Int -> Vector Int -> Int -> Int -> Bool -> Bound2 -> [Int] 
+    -> (Int, [Int])
+bnb2 vs ws n i t b2 xs
+    | i > n = (acc b, xs)
+    | otherwise = --trace (show i ++ "  " ++ (show $ acc b) ++ ", " ++ (show $ curr b)) $
+        if (t && wi > cap b) then (cb, cl) -- exceeds bound, pruned
+        else 
+            let acc' = (acc b) + (if t then vi else 0)
+                cap' = (cap b) - (if t then wi else 0)
+                xs' = if t then i:xs else xs
+                (e, c, nlst) = estimate vs ws i acc' cap' (rank b)
+                (lcb, lcl) = bnb2 vs ws n (i + 1) True 
+                                (Bound2 (Bound acc' cap' nlst cb) cl) xs'
+            in  if e <= cb then (cb, cl) -- estimation isn't better, pruned
+                else bnb2 vs ws n (i + 1) False 
+                        (Bound2 (Bound acc' cap' nlst lcb) lcl) xs'
+    where wi = ws ! (i - 1)
+          vi = vs ! (i - 1)
+          b = bound b2
+          cb = curr b
+          cl = clst b2
 
 -------------------------------------
 -- Tests
