@@ -12,6 +12,9 @@ import Control.DeepSeq (($!!))
 
 import qualified Data.Vector.Unboxed as UV
 import qualified Data.List as L
+import Data.List (sortBy)
+import Data.Function (on)
+
 {-- 
  0-1 Knapsack Formula:
  V(w, i) = if (w < w_i) then V(w, i - 1)
@@ -25,7 +28,7 @@ data Input = Input { file :: FilePath }
 input = Input { file = def &= help "Data file name" &= typ "FilePath" }
 
 main = run . lines <$> (cmdArgs input >>= readFile . file) >>= 
-       print2
+       print
 
 
 print2 :: [Int] -> IO () 
@@ -45,7 +48,7 @@ run ss
             n:k:_   -> let k' = read k
                            n' = read n
                            (vs, ws) = initK (tail ss)
-                       in  ans5 n' k' vs ws
+                       in  ans6 n' k' vs ws
 
 initK :: [String] -> (Vector Int, Vector Int)
 initK ss = let (vs, ws) = foldr (f . words) ([], []) ss
@@ -85,7 +88,7 @@ choose d vs ws =
 
 
 -- solution 1: 2D table
-ans2:: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ans2 :: Int -> Int -> Vector Int -> Vector Int -> [Int]
 ans2 n k vs ws = 
     let tbl = initTable k vs ws tbl
     in  [tbl ! k ! n ]
@@ -106,7 +109,7 @@ initTable k vs ws tbl = V.generate (k + 1) gen
                           else max no_i ok_i
 
 -- solution 2: single row table (using DeepSeq)
-ans3:: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ans3 :: Int -> Int -> Vector Int -> Vector Int -> [Int]
 ans3 n k vs ws = 
     let row = initRow k vs ws
     in  [row ! k]
@@ -131,7 +134,7 @@ initRow k vs ws = itbl 1 $!! V.replicate (k + 1) 0
                            else max no_i ok_i
 
 -- solution 2: single row table (using DeepSeq + Unboxed Vector)
-ans:: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ans :: Int -> Int -> Vector Int -> Vector Int -> [Int]
 ans n k vs ws = 
     let row = initRow2 k vs ws
     in  [row UV.! k]
@@ -152,7 +155,7 @@ initRow2 k vs ws = itbl 1 $!! UV.replicate (k + 1) 0
 
 
 -- solution 3: 
-ans5:: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ans5 :: Int -> Int -> Vector Int -> Vector Int -> [Int]
 ans5 n k vs ws = 
     let rt = (initRow3 k vs ws) ! k
         ps = reverse . snd $ foldl f (reverse $ snd rt, []) [1..n]
@@ -178,6 +181,64 @@ initRow3 k vs ws = itbl 1 $!! (V.replicate (k + 1) (0, []))
                            else if no_i > ok_i then (no_i, snd (row ! w))
                                 else (ok_i, i : snd (row ! w_r))
 
+
+
+-- solution 4: Branch & Bound for the optimal
+ans6 :: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ans6 n k vs ws = [run_bnb n k vs ws]
+
+data Bound = Bound { acc :: Int
+                   , cap :: Int
+                   , rank :: [Int]
+                   , curr :: Int
+                   } deriving (Show)
+
+ratios :: Vector Int -> Vector Int -> Vector Double
+ratios = V.zipWith (\a -> \b -> (fromIntegral a) / (fromIntegral b))
+
+sorted :: Vector Int -> Vector Int -> [Int]
+sorted vs ws = snd . unzip $ sortBy (flip (compare `on` fst)) 
+                   $ zip (V.toList $ ratios vs ws) [1..] 
+
+run_bnb :: Int -> Int -> Vector Int -> Vector Int -> Int
+run_bnb n k vs ws = 
+    let rlst = sorted vs ws
+        lcb = bnb vs ws n 1 True (Bound 0 k rlst 0)
+    in  bnb vs ws n 1 False (Bound 0 k rlst lcb)
+
+bnb :: Vector Int -> Vector Int -> Int -> Int -> Bool -> Bound -> Int
+bnb vs ws n i t b 
+    | i > n = acc b
+    | otherwise = --trace (show i ++ "  " ++ (show $ acc b) ++ ", " ++ (show $ curr b)) $
+        if (t && wi > cap b) then max (acc b) cb -- exceeds bound, pruned
+        else 
+            let acc' = (acc b) + (if t then vi else 0)
+                cap' = (cap b) - (if t then wi else 0)
+                (e, c, nlst) = estimate vs ws i acc' cap' (rank b)
+                lcb = bnb vs ws n (i + 1) True (Bound acc' cap' nlst cb)
+            in  if e <= cb then cb -- estimation isn't better, pruned
+                else bnb vs ws n (i + 1) False (Bound acc' cap' nlst lcb)
+    where wi = ws ! (i - 1)
+          vi = vs ! (i - 1)
+          cb = curr b
+
+estimate :: Vector Int -> Vector Int -> Int -> Int -> Int -> [Int] 
+    -> (Int, Int, [Int])
+estimate vs ws i acc cap rlst = 
+    (\(a, b, c) -> (a, b, reverse c)) $ f acc cap [] rlst
+    where f est c newlst [] = (est, c, newlst)
+          f est c newlst xss@(x:xs) = 
+              if x == i then 
+                  f est c newlst xs
+              else 
+                  if wx > c then (est + part, 0, 
+                                  (filter (/= i) (reverse xss)) ++ newlst)
+                  else f (est + vx) (c - wx) (x:newlst) xs
+              where wx = ws ! (x - 1)
+                    vx = vs ! (x - 1)
+                    -- ceiling, optimistic on estimation
+                    part = ceiling $ (fromIntegral (vx * c)) / 
+                                      (fromIntegral wx)
 
 
 -------------------------------------
