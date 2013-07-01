@@ -48,7 +48,7 @@ run ss
             n:k:_   -> let k' = read k
                            n' = read n
                            (vs, ws) = initK (tail ss)
-                       in  ans7 n' k' vs ws
+                       in  ansBB n' k' vs ws
 
 initK :: [String] -> (Vector Int, Vector Int)
 initK ss = let (vs, ws) = foldr (f . words) ([], []) ss
@@ -160,20 +160,11 @@ to_bimap n xs = reverse . snd $ foldl f (xs, []) [1..n]
                              else (a, 0:es)
 
 -- solution 3: 
-ans5 :: Int -> Int -> Vector Int -> Vector Int -> [Int]
-ans5 n k vs ws = 
+ansDP :: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ansDP n k vs ws = 
     let rt = (initRow3 k vs ws) ! k
     -- in  fst rt : (reverse (snd rt))
     in  fst rt : (to_bimap n $ reverse (snd rt))
-{--
-ans5 n k vs ws = 
-    let rt = (initRow3 k vs ws) ! k
-        ps = reverse . snd $ foldl f (reverse $ snd rt, []) [1..n]
-    in  fst rt : ps
-    where f ([], es) i = ([], 0:es)
-          f (a@(x:xs), es) i = if (i == x) then (xs, 1:es)
-                             else (a, 0:es)
---}
 
 initRow3 :: Int -> Vector Int -> Vector Int -> Vector (Int, [Int])
 initRow3 k vs ws = itbl 1 $!! (V.replicate (k + 1) (0, []))
@@ -210,15 +201,26 @@ sorted :: Vector Int -> Vector Int -> [Int]
 sorted vs ws = snd . unzip $ sortBy (flip (compare `on` fst)) 
                    $ zip (V.toList $ ratios vs ws) [1..] 
 
+-- better_sorted doesn't suffer from the precision problem in floats
+better_sorted :: Vector Int -> Vector Int -> [Int]
+better_sorted vs ws = 
+    let (_, _, xs) = unzip3 $ sortBy (flip f) $ 
+                        zip3 (V.toList vs) (V.toList ws) [1..]
+    in  xs
+    where f (v1, w1, _) (v2, w2, _) = compare (v1 * w2) (v2 * w1) 
+
+
+
 run_bnb :: Int -> Int -> Vector Int -> Vector Int -> Int
 run_bnb n k vs ws = 
-    let rlst = sorted vs ws
+    let rlst = better_sorted vs ws
         lcb = bnb vs ws n 1 True (Bound 0 k rlst 0)
     in  bnb vs ws n 1 False (Bound 0 k rlst lcb)
 
 bnb :: Vector Int -> Vector Int -> Int -> Int -> Bool -> Bound -> Int
 bnb vs ws n i t b 
-    | i > n = acc b
+    -- | i > n = acc b
+    | i > n = max (acc b) cb
     | otherwise = --trace (show i ++ "  " ++ (show $ acc b) ++ ", " ++ (show $ curr b)) $
         -- if (t && wi > cap b) then max (acc b) cb -- exceeds bound, pruned
         if (t && wi > cap b) then cb -- exceeds bound, pruned
@@ -247,14 +249,13 @@ estimate vs ws i acc cap rlst =
                   else f (est + vx) (c - wx) (x:newlst) xs
               where wx = ws ! (x - 1)
                     vx = vs ! (x - 1)
-                    -- ceiling, optimistic on estimation
-                    part = ceiling $ (fromIntegral (vx * c)) / 
+                    part = floor $ (fromIntegral ((vx * c) + (wx - 1))) / 
                                       (fromIntegral wx)
 
 
 -- solution 5: Branch & Bound for the optimal and selected elements
-ans7 :: Int -> Int -> Vector Int -> Vector Int -> [Int]
-ans7 n k vs ws = 
+ansBB :: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ansBB n k vs ws = 
     let (cb, cl) = run_bnb2 n k vs ws
     -- in  cb : cl
     in  cb : (to_bimap n cl) 
@@ -265,7 +266,7 @@ data Bound2 = Bound2 { bound :: Bound
 
 run_bnb2 :: Int -> Int -> Vector Int -> Vector Int -> (Int, [Int])
 run_bnb2 n k vs ws = 
-    let rlst = sorted vs ws
+    let rlst = better_sorted vs ws
         (lcb, lcl) = bnb2 vs ws n 1 True (Bound2 (Bound 0 k rlst 0) []) []
         (rcb, rcl) = bnb2 vs ws n 1 False (Bound2 (Bound 0 k rlst lcb) lcl) []
     in  (rcb, reverse rcl)
@@ -273,14 +274,16 @@ run_bnb2 n k vs ws =
 bnb2 :: Vector Int -> Vector Int -> Int -> Int -> Bool -> Bound2 -> [Int] 
     -> (Int, [Int])
 bnb2 vs ws n i t b2 xs
-    | i > n = (acc b, xs)
+    -- | i > n = (acc b, xs)
+    | i > n = if (acc b > cb) then (acc b, xs)
+              else (cb, cl)
     | otherwise = --trace (show i ++ "  " ++ (show $ acc b) ++ ", " ++ (show $ curr b)) $
         if (t && wi > cap b) then (cb, cl) -- exceeds bound, pruned
         else 
             let acc' = (acc b) + (if t then vi else 0)
                 cap' = (cap b) - (if t then wi else 0)
                 xs' = if t then i:xs else xs
-                (e, c, nlst) = estimate vs ws i acc' cap' (rank b)
+                (e, c, nlst) = estimate vs ws i acc' cap' (rank b) -- e >= acc'
                 (lcb, lcl) = bnb2 vs ws n (i + 1) True 
                                 (Bound2 (Bound acc' cap' nlst cb) cl) xs'
             in  if e <= cb then (cb, cl) -- estimation isn't better, pruned
