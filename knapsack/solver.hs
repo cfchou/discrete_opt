@@ -231,28 +231,22 @@ run_bnb n k vs ws =
         est = init_est arr k
         (lcb, lcl) = bnb3 arr n' k 1 True (Bound est 0 0 0 []) []
         (opt, lst) = bnb3 arr n' k 1 False (Bound est 0 0 lcb lcl) []
-    in  trace (__tr n' est arr) $ opt : lst
-    where __tr n est arr = ">>>>>>>>>>>>>>>>>\n" ++ show est ++ "\n" ++ 
-                         show n ++ ", " ++ show k ++ 
-                         "\n" ++ show arr
+    in  opt : lst
 
 
 bnb3 :: Array Int (Int, Int, Int) -> Int -> Int -> Int -> Bool -> Bound -> [Int] 
     -> (Int, [Int])
-bnb3 arr n k i t b xs = trace ("> (" ++ show i ++ ", " ++ show t ++ "), (" ++ 
-                            show (accv b) ++ ", " ++ show (accw b) ++ ")\n" ++
-                            show (esti b)) $ bnb3' arr n k i t b xs
-bnb3' arr n k i t b xs
-    | i > n || (t && wi > k - (accw b)) = trace ("-------------") $
+bnb3 arr n k i t b xs
+    | i > n || (t && wi > k - (accw b)) =
         if (accv b) > cb then (accv b, xs)
         else (cb, cl)
     | otherwise =
         let est' = count_est arr (esti b) k i t
-            (lcb, lcl) = bnb3 arr n k (i + 1) True (Bound est' accv' accw' cb cl) 
-                            xs'
-        -- in  if (est_val est') < cb then (cb, cl)
+            (lcb, lcl) = bnb3 arr n k (i + 1) True 
+                            (Bound est' accv' accw' cb cl) xs'
         in  if not (est_better est' cb) then (cb, cl)
-            else bnb3 arr n k (i + 1) False (Bound est' accv' accw' lcb lcl) xs'
+            else bnb3 arr n k (i + 1) False 
+                    (Bound est' accv' accw' lcb lcl) xs'
 
     where (vi, wi, idx) = arr A.! i
           cb = curr b
@@ -260,12 +254,9 @@ bnb3' arr n k i t b xs
           accv' = (accv b) + (if t then vi else 0)
           accw' = (accw b) + (if t then wi else 0)
           xs' = if t then idx:xs else xs
-          -- __tr e = trace ((show i) ++ " " ++ (show t) ++ " " ++ (show e)) e
 
 est_better :: Est -> Int -> Bool
-est_better est cb = 
-    let b = est_better' est cb
-    in  trace ("    " ++ show b ++ "   [[ " ++ show est ++ " >>> " ++ show cb ++ " ]]\n") b
+est_better est cb = est_better' est cb
 est_better' est cb =
     if big_v' > cb then True
     else (fv frac') * (delta frac') > (cb - big_v') * (fw frac')
@@ -291,22 +282,13 @@ init_est arr k = rest_est arr k (Est 0 0 1 zero_frac)
 
 rest_est :: Array Int (Int, Int, Int) -> Int -> Est -> Est
 rest_est arr k e
-    | (fracAt e) > n = 
-        trace ("  | " ++ show k 
-                ++ " " ++ show e) e
-    -- | k <= wi = e { small_v = floor $ (fromIntegral (vi * k + (wi - 1))) /
-    --                            (fromIntegral wi) }
-    | k < wi = 
-        let e' = e { frac = Frac vi wi k }
-        in  trace ("  x " ++ show k ++ ", " ++ show wi 
-                ++ " " ++ show e ++ "  -->  " ++ show e') e'
+    | (fracAt e) > n = e
+    | k < wi = e { frac = Frac vi wi k }
     | otherwise = -- k >= wi
         let e' = e { big_v = (big_v e) + vi,
                      big_w = (big_w e) + wi,
                      fracAt = (fracAt e) + 1 }
-        --in rest_est arr (k - wi) e'
-        in rest_est arr (k - wi) $ trace ("  o " ++ show k ++ ", " ++ show wi 
-                                    ++ " " ++ show e ++ "  -->  " ++ show e') e'
+        in rest_est arr (k - wi) e'
     where (vi, wi, _) = arr A.! (fracAt e)
           n = snd $ A.bounds arr
     
