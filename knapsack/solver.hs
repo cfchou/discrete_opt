@@ -50,7 +50,7 @@ run ss
             n:k:_   -> let k' = read k
                            n' = read n
                            (vs, ws) = initK (tail ss)
-                       in  ans7 n' k' vs ws
+                       in  ansBB n' k' vs ws
 
 initK :: [String] -> (Vector Int, Vector Int)
 initK ss = let (vs, ws) = foldr (f . words) ([], []) ss
@@ -191,8 +191,8 @@ initRow3 k vs ws = itbl 1 $!! (V.replicate (k + 1) (0, []))
 
 --------
 -- solution 6: Branch & Bound for the optimal and selected elements
-ans7 :: Int -> Int -> Vector Int -> Vector Int -> [Int]
-ans7 n k vs ws = 
+ansBB :: Int -> Int -> Vector Int -> Vector Int -> [Int]
+ansBB n k vs ws = 
     let (x:xs) = run_bnb n k vs ws
     in  x:(to_bimap n $ sort xs)
 
